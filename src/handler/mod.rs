@@ -7,7 +7,7 @@ use axum::{
 use chrono::Utc;
 use sqlx::MySqlPool;
 
-use crate::model::{CreateUrlRequest, CreateUrlResponse, UrlStatsResponse};
+use crate::model::{CreateUrlRequest, CreateUrlResponse, MessageResponse, UrlStatsResponse};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -23,7 +23,18 @@ pub async fn create_short_url(
     State(state): State<AppState>,
     Json(payload): Json<CreateUrlRequest>,
 ) -> Result<Json<CreateUrlResponse>, (StatusCode, String)> {
-    let short_code = nanoid::nanoid!(6);
+    let short_code = match &payload.custom_code {
+        Some(code) => {
+            if code.len() < 3 || code.len() > 10 {
+                return Err((StatusCode::BAD_REQUEST, "Custom code must be 3-10 characters".to_string()));
+            }
+            if !code.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+                return Err((StatusCode::BAD_REQUEST, "Custom code can only contain alphanumeric, - and _".to_string()));
+            }
+            code.clone()
+        }
+        None => nanoid::nanoid!(6),
+    };
 
     let expires_at = payload.expires_in_hours.map(|hours| {
         Utc::now().naive_utc() + chrono::Duration::hours(hours)
@@ -96,4 +107,23 @@ pub async fn get_stats(
         Some(stats) => Ok(Json(stats)),
         None => Err((StatusCode::NOT_FOUND, "Short URL not found".to_string())),
     }
+}
+
+pub async fn delete_short_url(
+    State(state): State<AppState>,
+    Path(code): Path<String>,
+) -> Result<Json<MessageResponse>, (StatusCode, String)> {
+    let result = sqlx::query("DELETE FROM short_urls WHERE short_code = ?")
+        .bind(&code)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if result.rows_affected() == 0 {
+        return Err((StatusCode::NOT_FOUND, "Short URL not found".to_string()));
+    }
+
+    Ok(Json(MessageResponse {
+        message: format!("Short URL '{}' deleted", code),
+    }))
 }

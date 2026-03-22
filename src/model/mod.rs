@@ -14,6 +14,7 @@ pub struct ShortUrl {
 #[derive(Debug, Deserialize)]
 pub struct CreateUrlRequest {
     pub url: String,
+    pub custom_code: Option<String>,
     pub expires_in_hours: Option<i64>,
 }
 
@@ -22,6 +23,11 @@ pub struct CreateUrlResponse {
     pub short_code: String,
     pub short_url: String,
     pub original_url: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MessageResponse {
+    pub message: String,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]

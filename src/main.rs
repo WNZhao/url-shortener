@@ -2,7 +2,7 @@ mod config;
 mod handler;
 mod model;
 
-use axum::{Router, routing::{get, post}};
+use axum::{Router, routing::{delete, get, post}};
 use sqlx::mysql::MySqlPoolOptions;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -42,6 +42,7 @@ async fn main() {
         .route("/health", get(handler::health))
         .route("/api/shorten", post(handler::create_short_url))
         .route("/api/stats/{code}", get(handler::get_stats))
+        .route("/api/url/{code}", delete(handler::delete_short_url))
         .route("/{code}", get(handler::redirect))
         .layer(TraceLayer::new_for_http())
         .with_state(state);
