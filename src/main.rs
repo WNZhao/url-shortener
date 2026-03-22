@@ -8,6 +8,7 @@ use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use config::AppConfig;
+use handler::AppState;
 
 #[tokio::main]
 async fn main() {
@@ -31,6 +32,11 @@ async fn main() {
 
     tracing::info!("Connected to MySQL");
 
+    let state = AppState {
+        db: pool,
+        base_url: config.base_url,
+    };
+
     // build router
     let app = Router::new()
         .route("/health", get(handler::health))
@@ -38,7 +44,7 @@ async fn main() {
         .route("/api/stats/{code}", get(handler::get_stats))
         .route("/{code}", get(handler::redirect))
         .layer(TraceLayer::new_for_http())
-        .with_state(pool);
+        .with_state(state);
 
     // start server
     let listener = tokio::net::TcpListener::bind(&config.server_addr).await.unwrap();
