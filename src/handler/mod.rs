@@ -1,12 +1,12 @@
 use axum::{
     Json,
     extract::{Path, State},
-    http::StatusCode,
     response::{IntoResponse, Redirect},
 };
 use chrono::Utc;
 use sqlx::MySqlPool;
 
+use crate::error::AppError;
 use crate::model::{CreateUrlRequest, CreateUrlResponse, MessageResponse, UrlStatsResponse};
 
 #[derive(Clone)]
@@ -22,14 +22,14 @@ pub async fn health() -> &'static str {
 pub async fn create_short_url(
     State(state): State<AppState>,
     Json(payload): Json<CreateUrlRequest>,
-) -> Result<Json<CreateUrlResponse>, (StatusCode, String)> {
+) -> Result<Json<CreateUrlResponse>, AppError> {
     let short_code = match &payload.custom_code {
         Some(code) => {
             if code.len() < 3 || code.len() > 10 {
-                return Err((StatusCode::BAD_REQUEST, "Custom code must be 3-10 characters".to_string()));
+                return Err(AppError::BadRequest("Custom code must be 3-10 characters".to_string()));
             }
             if !code.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
-                return Err((StatusCode::BAD_REQUEST, "Custom code can only contain alphanumeric, - and _".to_string()));
+                return Err(AppError::BadRequest("Custom code can only contain alphanumeric, - and _".to_string()));
             }
             code.clone()
         }
@@ -47,8 +47,7 @@ pub async fn create_short_url(
     .bind(&payload.url)
     .bind(expires_at)
     .execute(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .await?;
 
     Ok(Json(CreateUrlResponse {
         short_url: format!("{}/{}", state.base_url, short_code),
@@ -60,20 +59,19 @@ pub async fn create_short_url(
 pub async fn redirect(
     State(state): State<AppState>,
     Path(code): Path<String>,
-) -> Result<impl IntoResponse, (StatusCode, String)> {
+) -> Result<impl IntoResponse, AppError> {
     let row: Option<(String, Option<chrono::NaiveDateTime>)> = sqlx::query_as(
         "SELECT original_url, expires_at FROM short_urls WHERE short_code = ?",
     )
     .bind(&code)
     .fetch_optional(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .await?;
 
     match row {
         Some((url, expires_at)) => {
             if let Some(exp) = expires_at {
                 if Utc::now().naive_utc() > exp {
-                    return Err((StatusCode::GONE, "Link has expired".to_string()));
+                    return Err(AppError::Gone("Link has expired".to_string()));
                 }
             }
             let db = state.db.clone();
@@ -87,40 +85,38 @@ pub async fn redirect(
 
             Ok(Redirect::temporary(&url))
         }
-        None => Err((StatusCode::NOT_FOUND, "Short URL not found".to_string())),
+        None => Err(AppError::NotFound("Short URL not found".to_string())),
     }
 }
 
 pub async fn get_stats(
     State(state): State<AppState>,
     Path(code): Path<String>,
-) -> Result<Json<UrlStatsResponse>, (StatusCode, String)> {
+) -> Result<Json<UrlStatsResponse>, AppError> {
     let row: Option<UrlStatsResponse> = sqlx::query_as(
         "SELECT short_code, original_url, clicks, created_at, expires_at FROM short_urls WHERE short_code = ?",
     )
     .bind(&code)
     .fetch_optional(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .await?;
 
     match row {
         Some(stats) => Ok(Json(stats)),
-        None => Err((StatusCode::NOT_FOUND, "Short URL not found".to_string())),
+        None => Err(AppError::NotFound("Short URL not found".to_string())),
     }
 }
 
 pub async fn delete_short_url(
     State(state): State<AppState>,
     Path(code): Path<String>,
-) -> Result<Json<MessageResponse>, (StatusCode, String)> {
+) -> Result<Json<MessageResponse>, AppError> {
     let result = sqlx::query("DELETE FROM short_urls WHERE short_code = ?")
         .bind(&code)
         .execute(&state.db)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .await?;
 
     if result.rows_affected() == 0 {
-        return Err((StatusCode::NOT_FOUND, "Short URL not found".to_string()));
+        return Err(AppError::NotFound("Short URL not found".to_string()));
     }
 
     Ok(Json(MessageResponse {
