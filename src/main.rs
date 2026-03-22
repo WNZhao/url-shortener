@@ -1,15 +1,10 @@
-mod config;
-mod error;
-mod handler;
-mod model;
-
 use axum::{Router, routing::{delete, get, post}};
 use sqlx::mysql::MySqlPoolOptions;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use config::AppConfig;
-use handler::AppState;
+use url_shortener::config::AppConfig;
+use url_shortener::handler::{self, AppState};
 
 #[tokio::main]
 async fn main() {
