@@ -1,0 +1,31 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3030:3000"
+    environment:
+      DATABASE_URL: mysql://root:walker123@mysql:3306/url_shortener
+      SERVER_ADDR: 0.0.0.0:3000
+      BASE_URL: http://localhost:3030
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: walker123
+      MYSQL_DATABASE: url_shortener
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./migrations/001_init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-pwalker123"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  mysql_data:
